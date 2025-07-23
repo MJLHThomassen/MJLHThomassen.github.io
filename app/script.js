@@ -78,16 +78,77 @@ function updateListSelector()
 // Load todos from localStorage for current list
 function loadCurrentList()
 {
-    todoList.innerHTML = '';
-    if (lists[currentListId])
-    {
-        lists[currentListId].todos.forEach(todo =>
-        {
-            addTodo(todo.text, todo.completed, false);
-        });
-    }
+    renderTodoList();
     // Clear search when switching lists
     searchTodo.value = '';
+}
+
+// Render todos from data to DOM
+function renderTodoList()
+{
+    todoList.innerHTML = '';
+    if (!lists[currentListId] || !lists[currentListId].todos)
+    {
+        return;
+    }
+
+    lists[currentListId].todos.forEach((todo, index) =>
+    {
+        renderTodoItem(todo, index);
+    });
+}
+
+// Render a single todo item
+function renderTodoItem(todo, index)
+{
+    const li = document.createElement('li');
+    li.dataset.index = index;
+
+    // Create checkbox
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'todo-checkbox';
+    checkbox.checked = todo.completed;
+    checkbox.onchange = () => toggleTodo(index);
+
+    // Create span for text content
+    const span = document.createElement('span');
+    span.textContent = todo.text;
+    span.className = 'todo-content';
+    span.onclick = () => toggleTodo(index);
+
+    // Create tooltip
+    renderTooltip(span, todo.createdAt, todo.completedAt);
+
+    // Create edit button
+    const editBtn = document.createElement('button');
+    editBtn.innerHTML = '✏️';
+    editBtn.className = 'edit-btn';
+    editBtn.title = 'Edit';
+    editBtn.onclick = () => editTodo(index);
+
+    // Create delete button
+    const delBtn = document.createElement('button');
+    delBtn.innerHTML = '🗑️';
+    delBtn.className = 'delete-btn';
+    delBtn.title = 'Delete';
+    delBtn.onclick = () => deleteTodo(index);
+
+    const buttonGroup = document.createElement('div');
+    buttonGroup.className = 'button-group';
+    buttonGroup.appendChild(editBtn);
+    buttonGroup.appendChild(delBtn);
+
+    li.appendChild(checkbox);
+    li.appendChild(span);
+    li.appendChild(buttonGroup);
+
+    if (todo.completed)
+    {
+        li.classList.add('completed');
+    }
+
+    todoList.appendChild(li);
 }
 
 // Filter todos based on search query
@@ -96,10 +157,10 @@ function filterTodos()
     const searchQuery = searchTodo.value.toLowerCase().trim();
     const listItems = todoList.querySelectorAll('li');
 
-    listItems.forEach(li =>
+    listItems.forEach((li, index) =>
     {
-        const todoText = li.querySelector('span').textContent.toLowerCase();
-        if (searchQuery === '' || todoText.includes(searchQuery))
+        const todo = lists[currentListId].todos[index];
+        if (searchQuery === '' || todo.text.toLowerCase().includes(searchQuery))
         {
             li.style.display = 'flex';
         } else
@@ -109,27 +170,37 @@ function filterTodos()
     });
 }
 
-// Save todos to localStorage for current list
-function saveTodos()
+// Format date for display
+function formatDate(dateString)
 {
-    const todos = [];
-    const listItems = todoList.querySelectorAll('li');
-    listItems.forEach(li =>
+    if (!dateString) return null;
+    const date = new Date(dateString);
+    return date.toLocaleString();
+}
+
+// Render tooltip content
+function renderTooltip(spanElement, createdAt, completedAt)
+{
+    // Remove existing tooltip
+    const existingTooltip = spanElement.querySelector('.tooltip');
+    if (existingTooltip)
     {
-        const spanElement = li.querySelector('span');
-        const checkboxElement = li.querySelector('.todo-checkbox');
-        if (spanElement && checkboxElement)
-        {
-            const text = spanElement.textContent;
-            const completed = checkboxElement.checked;
-            todos.push({ text, completed });
-        }
-    });
-    if (lists[currentListId])
-    {
-        lists[currentListId].todos = todos;
-        saveLists();
+        existingTooltip.remove();
     }
+
+    // Create new tooltip
+    const tooltip = document.createElement('div');
+    tooltip.className = 'tooltip';
+
+    let tooltipText = `Created: ${formatDate(createdAt)}`;
+    if (completedAt)
+    {
+        tooltipText += `\nCompleted: ${formatDate(completedAt)}`;
+    }
+
+    tooltip.textContent = tooltipText;
+    tooltip.style.whiteSpace = 'pre-line'; // Allow line breaks
+    spanElement.appendChild(tooltip);
 }
 
 // List management functions
@@ -191,71 +262,52 @@ function switchList()
     saveCurrentListId();
 }
 
-function addTodo(text, completed = false, save = true)
+// Data manipulation functions - these work with the data objects directly
+
+function addTodo(text, completed = false, createdAt = null, completedAt = null)
 {
     if (!text.trim()) return;
-    const li = document.createElement('li');
 
-    // Create checkbox
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'todo-checkbox';
-    checkbox.checked = completed;
-    checkbox.onchange = () =>
+    if (!lists[currentListId])
     {
-        li.classList.toggle('completed', checkbox.checked);
-        saveTodos();
-    };
-
-    // Create span for text content
-    const span = document.createElement('span');
-    span.textContent = text;
-    span.className = 'todo-content';
-    span.onclick = () =>
-    {
-        checkbox.checked = !checkbox.checked;
-        li.classList.toggle('completed', checkbox.checked);
-        saveTodos();
-    };
-
-    const editBtn = document.createElement('button');
-    editBtn.innerHTML = '✏️';
-    editBtn.className = 'edit-btn';
-    editBtn.title = 'Edit';
-    editBtn.onclick = () => editTodo(li, span);
-
-    const delBtn = document.createElement('button');
-    delBtn.innerHTML = '🗑️';
-    delBtn.className = 'delete-btn';
-    delBtn.title = 'Delete';
-    delBtn.onclick = () =>
-    {
-        li.remove();
-        saveTodos();
-    };
-
-    const buttonGroup = document.createElement('div');
-    buttonGroup.className = 'button-group';
-    buttonGroup.appendChild(editBtn);
-    buttonGroup.appendChild(delBtn);
-
-    li.appendChild(checkbox);
-    li.appendChild(span);
-    li.appendChild(buttonGroup);
-    if (completed)
-    {
-        li.classList.add('completed');
+        lists[currentListId] = { name: 'New List', todos: [] };
     }
-    todoList.appendChild(li);
-    if (save)
-    {
-        saveTodos();
-    }
+
+    const todo = {
+        text: text.trim(),
+        completed: completed,
+        createdAt: createdAt || new Date().toISOString(),
+        completedAt: completedAt
+    };
+
+    lists[currentListId].todos.push(todo);
+    saveLists();
+    renderTodoList();
 }
 
-function editTodo(li, span)
+function toggleTodo(index)
 {
-    const currentText = span.textContent;
+    const todo = lists[currentListId].todos[index];
+    if (!todo) return;
+
+    todo.completed = !todo.completed;
+    todo.completedAt = todo.completed ? new Date().toISOString() : null;
+
+    saveLists();
+    renderTodoList();
+}
+
+function editTodo(index)
+{
+    const todo = lists[currentListId].todos[index];
+    if (!todo) return;
+
+    const li = todoList.querySelector(`li[data-index="${index}"]`);
+    if (!li) return;
+
+    const span = li.querySelector('span');
+    const currentText = todo.text;
+
     const input = document.createElement('input');
     input.type = 'text';
     input.value = currentText;
@@ -282,25 +334,15 @@ function editTodo(li, span)
         const newText = input.value.trim();
         if (newText && newText !== currentText)
         {
-            span.textContent = newText;
+            todo.text = newText;
+            saveLists();
         }
-        // Always replace input with span and restore buttons first
-        li.replaceChild(span, input);
-        buttonGroup.replaceChild(editBtn, saveBtn);
-        buttonGroup.replaceChild(delBtn, cancelBtn);
-        // Then save to localStorage after DOM is restored
-        if (newText && newText !== currentText)
-        {
-            saveTodos();
-        }
+        renderTodoList();
     };
 
     const cancelEdit = () =>
     {
-        // Always replace input with span and restore buttons
-        li.replaceChild(span, input);
-        buttonGroup.replaceChild(editBtn, saveBtn);
-        buttonGroup.replaceChild(delBtn, cancelBtn);
+        renderTodoList();
     };
 
     // Set up button event listeners
@@ -325,6 +367,15 @@ function editTodo(li, span)
     li.replaceChild(input, span);
     input.focus();
     input.select();
+}
+
+function deleteTodo(index)
+{
+    if (!lists[currentListId] || !lists[currentListId].todos[index]) return;
+
+    lists[currentListId].todos.splice(index, 1);
+    saveLists();
+    renderTodoList();
 }
 
 // Event listeners
