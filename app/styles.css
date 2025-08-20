@@ -390,3 +390,12 @@ li.completed span {
 .modal-btn-secondary:hover {
     background: #7f8c8d;
 }
+
+.modal-btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.modal-btn-danger:hover {
+    background: #c0392b;
+}

@@ -20,21 +20,20 @@
 
         <!-- Main app content - hidden until Alpine.js loads -->
         <div x-data="todoApp()" x-cloak x-ref="app">
-            <!-- Modal for creating/renaming lists -->
-            <div x-show="modal.show" x-cloak class="modal-overlay" @click.self="closeModal()">
-                <div class="modal-content">
+            <!-- Confirmation Modal (custom, now part of todoApp) -->
+            <div x-show="confirmModalVisible" x-cloak class="modal-overlay" @click.self="closeConfirmModal()"
+                x-transition>
+                <div class="modal-content" x-transition.scale>
                     <div class="modal-header">
-                        <h3 class="modal-title" x-text="modal.title"></h3>
+                        <h3 class="modal-title" x-text="confirmModalTitle"></h3>
                     </div>
                     <div class="modal-body">
-                        <input type="text" class="modal-input" x-model="modal.input" :placeholder="modal.placeholder"
-                            @keyup.enter="confirmModal()" @keyup.escape="closeModal()" x-ref="modalInput">
+                        <p x-text="confirmModalMessage"></p>
                     </div>
                     <div class="modal-footer">
-                        <button class="modal-btn modal-btn-secondary" @click="closeModal()">Cancel</button>
-                        <button class="modal-btn modal-btn-primary" @click="confirmModal()">
-                            <span x-text="modal.confirmText"></span>
-                        </button>
+                        <button class="modal-btn modal-btn-secondary" @click="closeConfirmModal()">Cancel</button>
+                        <button class="modal-btn modal-btn-danger" @click="confirmConfirmModal()"><span
+                                x-text="confirmModalConfirmText"></span></button>
                     </div>
                 </div>
             </div>
@@ -90,6 +89,25 @@
                     </li>
                 </template>
             </ul>
+
+            <!-- List Modal (custom, replaces reusable modal component) -->
+            <div x-show="listModalVisible" x-cloak class="modal-overlay" @click.self="closeListModal()" x-transition>
+                <div class="modal-content" x-transition.scale>
+                    <div class="modal-header">
+                        <h3 class="modal-title" x-text="listModalTitle"></h3>
+                    </div>
+                    <div class="modal-body">
+                        <input type="text" class="modal-input" x-model="listModalInput"
+                            :placeholder="listModalPlaceholder" @keyup.enter="confirmListModal()"
+                            @keyup.escape="closeListModal()" x-ref="listModalInput">
+                    </div>
+                    <div class="modal-footer">
+                        <button class="modal-btn modal-btn-secondary" @click="closeListModal()">Cancel</button>
+                        <button class="modal-btn modal-btn-primary" @click="confirmListModal()"><span
+                                x-text="listModalConfirmText"></span></button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -103,16 +121,19 @@
                 searchQuery: '',
                 editingIndex: -1,
                 editText: '',
-
-                // Modal state
-                modal: {
-                    show: false,
-                    title: '',
-                    placeholder: '',
-                    confirmText: '',
-                    input: '',
-                    onConfirm: null
-                },
+                // List modal state
+                listModalVisible: false,
+                listModalTitle: '',
+                listModalPlaceholder: '',
+                listModalConfirmText: '',
+                listModalInput: '',
+                listModalMode: 'create', // 'create' | 'rename'
+                // Confirmation modal state
+                confirmModalVisible: false,
+                confirmModalTitle: '',
+                confirmModalMessage: '',
+                confirmModalConfirmText: '',
+                confirmModalOnConfirm: null,
 
                 init()
                 {
@@ -140,46 +161,6 @@
                     return todos.filter(todo =>
                         todo.text.toLowerCase().includes(this.searchQuery.toLowerCase())
                     );
-                },
-
-                // Modal functions
-                openModal(title, placeholder, confirmText, initialValue = '', onConfirm = null)
-                {
-                    this.modal.title = title;
-                    this.modal.placeholder = placeholder;
-                    this.modal.confirmText = confirmText;
-                    this.modal.input = initialValue;
-                    this.modal.onConfirm = onConfirm;
-                    this.modal.show = true;
-
-                    // Focus input after modal is shown
-                    this.$nextTick(() =>
-                    {
-                        this.$refs.modalInput.focus();
-                        if (this.modal.input)
-                        {
-                            this.$refs.modalInput.select();
-                        }
-                    });
-                },
-
-                closeModal()
-                {
-                    this.modal.show = false;
-                    this.modal.input = '';
-                    this.modal.onConfirm = null;
-                },
-
-                confirmModal()
-                {
-                    if (!this.modal.input.trim()) return;
-
-                    if (this.modal.onConfirm)
-                    {
-                        this.modal.onConfirm(this.modal.input.trim());
-                    }
-
-                    this.closeModal();
                 },
 
                 initializeLists()
@@ -296,60 +277,35 @@
 
                 createNewList()
                 {
-                    this.openModal(
-                        'Create New List',
-                        'Enter list name...',
-                        'Create',
-                        '',
-                        (name) =>
-                        {
-                            const listId = 'list_' + Date.now();
-                            this.lists[listId] = {
-                                name: name,
-                                todos: []
-                            };
-                            this.currentListId = listId;
-                            this.saveLists();
-                            this.saveCurrentListId();
-                        }
-                    );
+                    this.openListModal('create', 'Create New List', 'Enter list name...', 'Create', '');
                 },
 
                 renameCurrentList()
                 {
                     const currentName = this.currentList.name;
-                    this.openModal(
-                        'Rename List',
-                        'Enter new list name...',
-                        'Rename',
-                        currentName,
-                        (newName) =>
-                        {
-                            if (newName !== this.currentList.name)
-                            {
-                                this.lists[this.currentListId].name = newName;
-                                this.saveLists();
-                            }
-                        }
-                    );
+                    this.openListModal('rename', 'Rename List', 'Enter new list name...', 'Rename', currentName);
                 },
 
                 deleteCurrentList()
                 {
                     if (Object.keys(this.lists).length <= 1)
                     {
-                        alert('Cannot delete the last list!');
+                        this.openConfirmModal('Cannot Delete List', 'Cannot delete the last list!', 'OK');
                         return;
                     }
-
                     const listName = this.currentList.name;
-                    if (confirm(`Are you sure you want to delete "${listName}"?`))
-                    {
-                        delete this.lists[this.currentListId];
-                        this.currentListId = Object.keys(this.lists)[0];
-                        this.saveLists();
-                        this.saveCurrentListId();
-                    }
+                    this.openConfirmModal(
+                        'Delete List',
+                        `Are you sure you want to delete "${listName}"?`,
+                        'Delete',
+                        () =>
+                        {
+                            delete this.lists[this.currentListId];
+                            this.currentListId = Object.keys(this.lists)[0];
+                            this.saveLists();
+                            this.saveCurrentListId();
+                        }
+                    );
                 },
 
                 switchList()
@@ -374,6 +330,79 @@
                         text += `\nCompleted: ${this.formatDate(todo.completedAt)}`;
                     }
                     return text;
+                },
+
+                openListModal(mode, title, placeholder, confirmText, initialValue = '')
+                {
+                    this.listModalMode = mode;
+                    this.listModalTitle = title;
+                    this.listModalPlaceholder = placeholder;
+                    this.listModalConfirmText = confirmText;
+                    this.listModalInput = initialValue;
+                    this.listModalVisible = true;
+                    this.$nextTick(() =>
+                    {
+                        if (this.$refs.listModalInput)
+                        {
+                            this.$refs.listModalInput.focus();
+                            if (initialValue)
+                            {
+                                this.$refs.listModalInput.select();
+                            }
+                        }
+                    });
+                },
+
+                closeListModal()
+                {
+                    this.listModalVisible = false;
+                    this.listModalInput = '';
+                },
+
+                confirmListModal()
+                {
+                    const name = (this.listModalInput || '').trim();
+                    if (!name) return;
+                    if (this.listModalMode === 'create')
+                    {
+                        const listId = 'list_' + Date.now();
+                        this.lists[listId] = { name, todos: [] };
+                        this.currentListId = listId;
+                        this.saveLists();
+                        this.saveCurrentListId();
+                    } else if (this.listModalMode === 'rename')
+                    {
+                        if (name !== this.currentList.name)
+                        {
+                            this.lists[this.currentListId].name = name;
+                            this.saveLists();
+                        }
+                    }
+                    this.closeListModal();
+                },
+
+                openConfirmModal(title, message, confirmText = 'Confirm', onConfirm = null)
+                {
+                    this.confirmModalTitle = title;
+                    this.confirmModalMessage = message;
+                    this.confirmModalConfirmText = confirmText;
+                    this.confirmModalOnConfirm = onConfirm;
+                    this.confirmModalVisible = true;
+                },
+
+                closeConfirmModal()
+                {
+                    this.confirmModalVisible = false;
+                    this.confirmModalOnConfirm = null;
+                },
+
+                confirmConfirmModal()
+                {
+                    if (this.confirmModalOnConfirm)
+                    {
+                        this.confirmModalOnConfirm();
+                    }
+                    this.closeConfirmModal();
                 }
             }
         }
